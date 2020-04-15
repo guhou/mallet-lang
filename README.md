@@ -2,12 +2,12 @@
 
 [![License](https://img.shields.io/github/license/guhou/mallet-lang)][License]
 [![Issues](https://img.shields.io/github/issues/guhou/mallet-lang)][GitHub Issues]
-[![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-v2.0%20adopted-ff69b4.svg)][Code of Conduct] 
+[![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-v2.0%20adopted-ff69b4.svg)][Code of Conduct]
 
 Mallet is an experimental multi-paradigm programming language.
 
 At the moment, Mallet is a hobby project, and is probably not usable for
-anything other than exploring type systems. The experimental goal of Merlot is
+anything other than exploring type systems. The experimental goal of Mallet is
 to explore the contribution of dependent type systems to the developer
 experience of programming languages. This experiment is inspired by projects
 such as [Idris][], which encourage the principle of 'Type-Driven Development',
