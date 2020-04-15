@@ -33,9 +33,7 @@ common language
     DeriveFunctor
     DeriveGeneric
     DeriveTraversable
-    KindSignatures
     OverloadedStrings
-    StandaloneDeriving
     TemplateHaskell
     TypeFamilies
 
@@ -81,4 +79,3 @@ test-suite mallet-test
     , quickcheck-instances ^>= 0.3.17
   build-tool-depends:
     hspec-discover:hspec-discover ^>= 2.7
-
