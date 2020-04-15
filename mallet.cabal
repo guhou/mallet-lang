@@ -68,6 +68,8 @@ test-suite mallet-test
   type: exitcode-stdio-1.0
   hs-source-dirs: test
   main-is: Main.hs
+  other-modules:
+    Mallet.Core.TermSpec
   build-depends:
     , mallet ^>= 0.1
     , hspec ^>= 2.7
