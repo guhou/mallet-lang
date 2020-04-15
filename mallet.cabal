@@ -61,7 +61,7 @@ library
   import: language, dependencies
   hs-source-dirs: src
   exposed-modules:
-    Mallet
+    Mallet.Core.Term
 
 test-suite mallet-test
   import: language, dependencies, threaded-rts
