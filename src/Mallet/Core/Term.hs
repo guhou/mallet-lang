@@ -5,7 +5,9 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 module Mallet.Core.Term
-    ( Term(..)
+    ( Identifier
+    , Term'
+    , Term(..)
     , TermF(..)
     , makeBinding
     )
@@ -25,10 +27,15 @@ import           Data.Functor.Classes           ( eq1
                                                 , showsPrec1
                                                 )
 import           Data.Functor.Foldable.TH       ( makeBaseFunctor )
+import           Data.Text                      ( Text )
 import           GHC.Generics                   ( Generic
                                                 , Generic1
                                                 )
 import           Numeric.Natural                ( Natural )
+
+type Identifier = Text
+
+type Term' = Term Identifier
 
 -- Term represents terms of the Core language, and implements a
 -- dependently-typed lambda calculus similar to the Calculus of Constructions.

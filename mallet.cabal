@@ -62,6 +62,7 @@ library
   exposed-modules:
     Mallet.Core.Parse
     Mallet.Core.Term
+    Mallet.Core.TypeCheck
 
 test-suite mallet-test
   import: language, dependencies, threaded-rts
