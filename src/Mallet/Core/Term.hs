@@ -80,4 +80,4 @@ instance Show a => Show (Term a) where
     showsPrec = showsPrec1
 
 makeBinding :: Eq a => a -> Term a -> Term a -> Term a
-makeBinding var domain body = Binding domain (abstract1 var body)
+makeBinding var codomain body = Binding codomain (abstract1 var body)
