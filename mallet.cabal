@@ -61,6 +61,7 @@ library
   hs-source-dirs: src
   exposed-modules:
     Mallet.Core.Parse
+    Mallet.Core.Reduce
     Mallet.Core.Term
   other-modules:
     Mallet.Core.Internal
