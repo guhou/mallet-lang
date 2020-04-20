@@ -62,7 +62,8 @@ library
   exposed-modules:
     Mallet.Core.Parse
     Mallet.Core.Term
-    Mallet.Core.TypeCheck
+  other-modules:
+    Mallet.Core.Internal
 
 test-suite mallet-test
   import: language, dependencies, threaded-rts
@@ -72,6 +73,7 @@ test-suite mallet-test
   other-modules:
     Mallet.Core.ParseSpec
     Mallet.Core.TermSpec
+    Mallet.Core.Gen
   build-depends:
     , mallet ^>= 0.1
     , hspec ^>= 2.7

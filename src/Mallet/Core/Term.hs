@@ -1,90 +1,64 @@
-{-# LANGUAGE DeriveFoldable #-}
-{-# LANGUAGE DeriveFunctor #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DeriveTraversable #-}
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE TypeFamilies #-}
+{-|
+module: Mallet.Core.Term
+description: The Mallet Core language
+copyright: (c) Angus Houston 2020
+license: GPL-3.0-or-later
+maintainer: angus.houston@outlook.com.au
+stability: experimental
+
+Term represents the expression language for Mallet Core. It is a dependently-
+typed lambda calculus similar to the Calculus of Constructions.
+-}
 module Mallet.Core.Term
-    ( Identifier
-    , Term'
+    ( CoreTerm
+    , CoreTermF
+    , Identifier
     , Term(..)
     , TermF(..)
+    , makeApp
     , makeBinding
+    , makeType
+    , makeVar
     )
 where
 
-import           Bound                          ( Scope
-                                                , abstract1
-                                                , makeBound
-                                                )
-import           Control.DeepSeq                ( NFData )
-import           Data.Deriving                  ( deriveEq1
-                                                , deriveRead1
-                                                , deriveShow1
-                                                )
-import           Data.Functor.Classes           ( eq1
-                                                , readsPrec1
-                                                , showsPrec1
-                                                )
-import           Data.Functor.Foldable.TH       ( makeBaseFunctor )
+import           Bound.Name                     ( abstract1Name )
 import           Data.Text                      ( Text )
-import           GHC.Generics                   ( Generic
-                                                , Generic1
-                                                )
 import           Numeric.Natural                ( Natural )
 
+import           Mallet.Core.Internal
+
+-- | The type of Core terms with text identifiers
+type CoreTerm = Term Identifier
+
+-- | The base functor of the CoreTerm type- can be used to write recursion
+-- schemes on the CoreTerm type in terms of base functor algebrae and
+-- coalgebrae.
+type CoreTermF = TermF Identifier
+
+-- | Identifiers for Core variables and binders
 type Identifier = Text
 
-type Term' = Term Identifier
+-- | construct a CoreTerm by applying the given CoreTerms together. Note that
+-- this constructor is simply a type-narrowed version of the Core App
+-- constructor.
+makeApp :: CoreTerm -> CoreTerm -> CoreTerm
+makeApp = App
 
--- Term represents terms of the Core language, and implements a
--- dependently-typed lambda calculus similar to the Calculus of Constructions.
--- Term is indexed by the type of bindings.
-data Term a
+-- | construct a CoreTerm binder using the specified binder name, binding
+-- codomain, and body. This is a smart constructor that abstracts all instances
+-- of the given identifier inside body. It does not abstract variables in the
+-- codomain.
+makeBinding :: Text -> CoreTerm -> CoreTerm -> CoreTerm
+makeBinding identifier codomain body =
+    Binding codomain (abstract1Name identifier body)
 
-    -- | Type indicates the type of terms in the core language. To avoid
-    -- impredicativity, a type cannot contain itself; instead a hierarchy of
-    -- type universes is created, denoted by a universe index.
-    -- `Type`, written also as `Type 0`, is the type of constants, and `Type 1`
-    -- is the type of `Type 0`, etc.
-    -- Universe polymorphism and cumulativity is not yet implemented.
-    = Type Natural
+-- | construct a Type term in the specified universe. Note that this
+-- constructor is simply a type-narrowed version of the Core Type constructor.
+makeType :: Natural -> CoreTerm
+makeType = Type
 
-    -- | Var represents a named variable in a term. Vars may either be free
-    -- variables referring to constants, or they may be variables bound by
-    -- a containing Binding.
-    | Var a
-
-    -- | App represents the application of a binding term to another term:
-    -- typically the application of a function to its argument, or the
-    -- instantiation of a dependent product with a particular type.
-    | App (Term a) (Term a)
-
-    -- | Binding represents a named binding that is either a lambda abstraction
-    -- or a dependent product type.
-    -- A binding represents a term `PI(x:A), B(x)`, where `x` is a variable
-    -- name, `A` is a term indicating the type of `x`, and `B(x)` is a term
-    -- that may refer to the bound value of `x`.
-    | Binding (Term a) (Scope () Term a)
-
-    deriving (Foldable, Functor, Generic, Generic1, Traversable)
-
-makeBaseFunctor ''Term
-makeBound ''Term
-deriveEq1  ''Term
-deriveRead1 ''Term
-deriveShow1 ''Term
-
-instance Eq a => Eq (Term a) where
-    (==) = eq1
-
-instance NFData a => NFData (Term a)
-
-instance Read a => Read (Term a) where
-    readsPrec = readsPrec1
-
-instance Show a => Show (Term a) where
-    showsPrec = showsPrec1
-
-makeBinding :: Eq a => a -> Term a -> Term a -> Term a
-makeBinding var codomain body = Binding codomain (abstract1 var body)
+-- | construct a free Var term with the specified name. Note that this
+-- constructor is simply a type-narrowed version of the Core Var constructor.
+makeVar :: Text -> CoreTerm
+makeVar = Var
