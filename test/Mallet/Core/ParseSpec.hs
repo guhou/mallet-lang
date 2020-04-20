@@ -4,20 +4,33 @@ module Mallet.Core.ParseSpec
     )
 where
 
-import           Bound
-import           Data.Char
+import           Bound                          ( Scope(..)
+                                                , Var(..)
+                                                )
+import           Bound.Name                     ( Name(..) )
 import           Data.Text                      ( Text )
 import qualified Data.Text                     as Text
-import           Test.Hspec
-import           Test.Hspec.Megaparsec
-import           Test.QuickCheck
+import           Text.Megaparsec                ( parse )
+import           TextShow                       ( showt )
+
+import           Test.Hspec                     ( Expectation
+                                                , Spec
+                                                , context
+                                                , describe
+                                                , it
+                                                )
+import           Test.Hspec.Megaparsec          ( shouldFailOn
+                                                , shouldParse
+                                                )
+import           Test.QuickCheck                ( property )
 import           Test.QuickCheck.Instances.Natural
                                                 ( )
-import           Text.Megaparsec
-import           TextShow
 
-import           Mallet.Core.Parse
-import           Mallet.Core.Term
+import           Mallet.Core.Parse              ( parseTerm )
+import           Mallet.Core.Gen                ( MkIdentifier(..) )
+import           Mallet.Core.Term               ( CoreTerm
+                                                , Term(..)
+                                                )
 
 spec :: Spec
 spec = describe "parseTerm" $ do
@@ -29,50 +42,47 @@ spec = describe "parseTerm" $ do
     context "applications" $ do
         it "parses applications of constants"
             $ property
-            $ \(Identifier function, Identifier argument) ->
-                  Text.unwords [function, argument]
-                      `shouldParseTerm` App (Var function) (Var argument)
-        it "parses Type applied to constants"
-            $ property
-            $ \(Identifier argument) ->
-                  Text.unwords ["Type", argument]
-                      `shouldParseTerm` App (Type 0) (Var argument)
-        it "parses constants applied to Type"
-            $ property
-            $ \(Identifier function) ->
-                  Text.unwords [function, "Type"]
-                      `shouldParseTerm` App (Var function) (Type 0)
+            $ \(MkIdentifier f, MkIdentifier x) ->
+                  let stream = Text.unwords [f, x]
+                  in  stream `shouldParseTerm` App (Var f) (Var x)
+
+        it "parses Type applied to constants" $ property $ \(MkIdentifier x) ->
+            let stream = Text.unwords ["Type", x]
+            in  stream `shouldParseTerm` App (Type 0) (Var x)
+
+        it "parses constants applied to Type" $ property $ \(MkIdentifier f) ->
+            Text.unwords [f, "Type"] `shouldParseTerm` App (Var f) (Type 0)
 
     context "bindings" $ do
         it "parses bindings with constants"
-            $                 "\\(x : Type), Type"
-            `shouldParseTerm` Binding (Type 0) (Scope (Type 0))
+            $ let stream = "\\(x : Type), Type"
+              in  stream `shouldParseTerm` Binding (Type 0) (Scope (Type 0))
+
         it "parses bindings with free variables"
-            $                 "\\(x : Int), Z"
-            `shouldParseTerm` Binding (Var "Int") (Scope (Var (F (Var "Z"))))
+            $ let stream = "\\(x : Int), Z"
+              in  stream `shouldParseTerm` Binding
+                      (Var "Int")
+                      (Scope (Var (F (Var "Z"))))
+
         it "parses bindings with bound variables"
-            $                 "\\(x : Int), x"
-            `shouldParseTerm` Binding (Var "Int") (Scope (Var (B ())))
+            $ let stream = "\\(x : Int), x"
+              in  stream `shouldParseTerm` Binding
+                      (Var "Int")
+                      (Scope (Var (B (Name "x" ()))))
 
     context "Type" $ do
         it "can parse Type with implicit universe"
             $                 "Type"
             `shouldParseTerm` Type 0
-        it "can parse Type with universe parameter"
-            $ property
-            $ \(NonNegative universe) -> Text.unwords ["Type", showt universe]
-                  `shouldParseTerm` Type universe
+        it "can parse Type with universe parameter" $ property $ \universe ->
+            let stream = Text.unwords ["Type", showt universe]
+            in  stream `shouldParseTerm` Type universe
 
     context "Var"
         $ it "can parse identifiers"
         $ property
-        $ \(Identifier ident) -> ident `shouldParseTerm` Var ident
+        $ \(MkIdentifier identifier) ->
+              identifier `shouldParseTerm` Var identifier
 
-newtype Identifier = Identifier Text deriving (Show)
-
-instance Arbitrary Identifier where
-    arbitrary = Identifier . Text.pack <$> listOf1
-        (arbitraryUnicodeChar `suchThat` isLetter)
-
-shouldParseTerm :: Text -> Term Text -> Expectation
+shouldParseTerm :: Text -> CoreTerm -> Expectation
 shouldParseTerm stream term = parse parseTerm "" stream `shouldParse` term

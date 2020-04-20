@@ -20,9 +20,8 @@ import qualified Text.Megaparsec.Char.Lexer    as Lexer
 import           Mallet.Core.Term
 
 type Parser = Parsec Void Text
-type Term' = Term Text
 
-parseBinding :: Parser Term'
+parseBinding :: Parser CoreTerm
 parseBinding = do
     lambda
     lparen
@@ -35,20 +34,20 @@ parseBinding = do
     let binding = makeBinding var domain body
     pure binding
 
-parseFactor :: Parser Term'
+parseFactor :: Parser CoreTerm
 parseFactor = parseBinding <|> parseType <|> parseVar <|> parens parseTerm
 
-parseTerm :: Parser Term'
+parseTerm :: Parser CoreTerm
 parseTerm = foldr1 App <$> some parseFactor
 
-parseType :: Parser Term'
+parseType :: Parser CoreTerm
 parseType = do
     keyword "Type"
     universe <- option 0 natural
     pure (Type universe)
 
-parseVar :: Parser Term'
-parseVar = Var <$> identifier
+parseVar :: Parser CoreTerm
+parseVar = makeVar <$> identifier
 
 spaceConsumer :: Parser ()
 spaceConsumer = Lexer.space space1 empty empty
