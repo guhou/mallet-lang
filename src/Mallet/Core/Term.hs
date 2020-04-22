@@ -10,55 +10,154 @@ Term represents the expression language for Mallet Core. It is a dependently-
 typed lambda calculus similar to the Calculus of Constructions.
 -}
 module Mallet.Core.Term
-    ( CoreTerm
-    , CoreTermF
-    , Identifier
-    , Term(..)
-    , TermF(..)
-    , makeApp
-    , makeBinding
-    , makeType
-    , makeVar
-    )
+  ( CoreTerm
+  , Identifier
+  , Term(..)
+  )
 where
 
-import           Bound.Name                     ( abstract1Name )
+import           Bound
+import           Bound.Name
+import           Bound.Var
+import           Control.Applicative
+import           Control.DeepSeq
+import           Control.Monad
+import           Data.Functor.Classes
 import           Data.Text                      ( Text )
-import           Numeric.Natural                ( Natural )
+import           Numeric.Natural
+import           Text.Read
 
-import           Mallet.Core.Internal
+-- Term represents terms of the Core language, and implements a
+-- dependently-typed lambda calculus similar to the Calculus of Constructions.
+-- Term is indexed by the type of bindings.
+data Term a
 
--- | The type of Core terms with text identifiers
-type CoreTerm = Term Identifier
+    -- | Type indicates the type of terms in the core language. To avoid
+    -- impredicativity, a type cannot contain itself; instead a hierarchy of
+    -- type universes is created, denoted by a universe index.
+    -- `Type`, written also as `Type 0`, is the type of constants, and `Type 1`
+    -- is the type of `Type 0`, etc.
+    -- Universe polymorphism and cumulativity is not yet implemented.
+    = Type Natural
 
--- | The base functor of the CoreTerm type- can be used to write recursion
--- schemes on the CoreTerm type in terms of base functor algebrae and
--- coalgebrae.
-type CoreTermF = TermF Identifier
+    -- | Var represents a named variable in a term. Vars may either be free
+    -- variables referring to constants, or they may be variables bound by
+    -- a containing Binding.
+    | Var a
 
--- | Identifiers for Core variables and binders
+    -- | App represents the application of a binding term to another term:
+    -- typically the application of a function to its argument, or the
+    -- instantiation of a dependent product with a particular type.
+    | App (Term a) (Term a)
+
+    -- | Binding represents a named binding that is either a lambda abstraction
+    -- or a dependent product type.
+    -- A binding represents a term `PI(x:A), B(x)`, where `x` is a variable
+    -- name, `A` is a term indicating the type of `x`, and `B(x)` is a term
+    -- that may refer to the bound value of `x`.
+    | Binding (Term a) (Scope (Name Text ()) Term a)
+
 type Identifier = Text
 
--- | construct a CoreTerm by applying the given CoreTerms together. Note that
--- this constructor is simply a type-narrowed version of the Core App
--- constructor.
-makeApp :: CoreTerm -> CoreTerm -> CoreTerm
-makeApp = App
+type CoreTerm = Term Identifier
 
--- | construct a CoreTerm binder using the specified binder name, binding
--- codomain, and body. This is a smart constructor that abstracts all instances
--- of the given identifier inside body. It does not abstract variables in the
--- codomain.
-makeBinding :: Text -> CoreTerm -> CoreTerm -> CoreTerm
-makeBinding identifier codomain body =
-    Binding codomain (abstract1Name identifier body)
+instance Applicative Term where
+  pure  = return
+  (<*>) = ap
 
--- | construct a Type term in the specified universe. Note that this
--- constructor is simply a type-narrowed version of the Core Type constructor.
-makeType :: Natural -> CoreTerm
-makeType = Type
+instance Eq a => Eq (Term a) where
+  (==) = eq1
 
--- | construct a free Var term with the specified name. Note that this
--- constructor is simply a type-narrowed version of the Core Var constructor.
-makeVar :: Text -> CoreTerm
-makeVar = Var
+instance Eq1 Term where
+  liftEq _  (Type universeA  ) (Type universeB  ) = universeA == universeB
+
+  liftEq eq (Var  identifierA) (Var  identifierB) = eq identifierA identifierB
+
+  liftEq eq (App functionA argumentA) (App functionB argumentB) =
+    liftEq eq functionA functionB && liftEq eq argumentA argumentB
+
+  liftEq eq (Binding codomainA bodyA) (Binding codomainB bodyB) =
+    liftEq eq codomainA codomainB && liftEq eq bodyA bodyB
+
+  liftEq _ _ _ = False
+
+instance Foldable Term where
+  foldMap f term = case term of
+    Type _                    -> mempty
+    Var  universe             -> f universe
+    App function argument -> mappend (foldMap f function) (foldMap f argument)
+    Binding codomain body     -> mappend (foldMap f codomain) (foldMap f body)
+
+instance Functor Term where
+  fmap f term = term >>= return . f
+
+instance Monad Term where
+  return = Var
+  term >>= f = case term of
+    Type universe             -> Type universe
+    Var  identifier           -> f identifier
+    App     function argument -> App (function >>= f) (argument >>= f)
+    Binding codomain body     -> Binding (codomain >>= f) (body >>>= f)
+
+instance NFData a => NFData (Term a) where
+  rnf = rnf1
+
+instance NFData1 Term where
+  liftRnf f term = case term of
+    Type universe         -> rnf universe
+
+    Var  identifier       -> f identifier
+
+    App function argument -> liftRnf f function `seq` liftRnf f argument
+
+    Binding codomain body ->
+      liftRnf f codomain `seq` liftRnf (unvar rnf (liftRnf f)) (unscope body)
+
+instance Read a => Read (Term a) where
+  readPrec = readPrec1
+
+instance Read1 Term where
+  liftReadPrec rp rl =
+    readData
+      $   readUnaryWith readPrec "Type" Type
+
+      <|> readUnaryWith rp       "Var"  Var
+
+      <|> readBinaryWith (liftReadPrec rp rl) (liftReadPrec rp rl) "App" App
+
+      <|> readBinaryWith (liftReadPrec rp rl)
+                         (liftReadPrec rp rl)
+                         "Binding"
+                         Binding
+
+instance Show a => Show (Term a) where
+  showsPrec = showsPrec1
+
+instance Show1 Term where
+  liftShowsPrec sp sl p term = case term of
+    Type universe         -> showsUnaryWith showsPrec "Type" p universe
+
+    Var  identifier       -> showsUnaryWith sp "Var" p identifier
+
+    App function argument -> showsBinaryWith (liftShowsPrec sp sl)
+                                             (liftShowsPrec sp sl)
+                                             "App"
+                                             p
+                                             function
+                                             argument
+
+    Binding codomain body -> showsBinaryWith (liftShowsPrec sp sl)
+                                             (liftShowsPrec sp sl)
+                                             "Binding"
+                                             p
+                                             codomain
+                                             body
+
+instance Traversable Term where
+  traverse f term = case term of
+    Type universe   -> pure (Type universe)
+    Var  identifier -> fmap Var (f identifier)
+    App function argument ->
+      liftA2 App (traverse f function) (traverse f argument)
+    Binding codomain body ->
+      liftA2 Binding (traverse f codomain) (traverse f body)

@@ -29,13 +29,7 @@ common language
   default-language: Haskell2010
   ghc-options: -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints
   other-extensions:
-    DeriveFoldable
-    DeriveFunctor
-    DeriveGeneric
-    DeriveTraversable
     OverloadedStrings
-    TemplateHaskell
-    TypeFamilies
 
 common dependencies
   build-depends:
@@ -60,11 +54,11 @@ library
   import: language, dependencies
   hs-source-dirs: src
   exposed-modules:
+    Mallet.Core
     Mallet.Core.Parse
     Mallet.Core.Reduce
     Mallet.Core.Term
-  other-modules:
-    Mallet.Core.Internal
+    Mallet.Core.TermF
 
 test-suite mallet-test
   import: language, dependencies, threaded-rts
@@ -72,9 +66,9 @@ test-suite mallet-test
   hs-source-dirs: test
   main-is: Main.hs
   other-modules:
-    Mallet.Core.ParseSpec
-    Mallet.Core.TermSpec
-    Mallet.Core.Gen
+    MalletTest.Core.ParseSpec
+    MalletTest.Core.TermSpec
+    MalletTest.Core.Internal
   build-depends:
     , mallet ^>= 0.1
     , hspec ^>= 2.7

@@ -3,16 +3,8 @@ module Mallet.Core.Reduce
   )
 where
 
-import           Bound                          ( instantiate1 )
-import           Data.Functor.Foldable          ( embed
-                                                , fold
-                                                )
-
-import           Mallet.Core.Term               ( CoreTerm
-                                                , CoreTermF
-                                                , Term(..)
-                                                , TermF(..)
-                                                )
+import           Bound
+import           Mallet.Core
 
 reduce :: CoreTerm -> CoreTerm
 reduce = fold beta
@@ -20,4 +12,4 @@ reduce = fold beta
 beta :: CoreTermF CoreTerm -> CoreTerm
 beta termF = case termF of
   AppF (Binding _ body) argument -> instantiate1 argument body
-  _                              -> embed termF
+  _                              -> roll termF

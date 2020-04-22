@@ -1,8 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Mallet.Core.Parse
-    ( Parser
-    , parseTerm
-    )
+  ( Parser
+  , parseTerm
+  )
 where
 
 import           Control.Monad                  ( guard )
@@ -17,22 +17,22 @@ import           Text.Megaparsec
 import           Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer    as Lexer
 
-import           Mallet.Core.Term
+import           Mallet.Core
 
 type Parser = Parsec Void Text
 
 parseBinding :: Parser CoreTerm
 parseBinding = do
-    lambda
-    lparen
-    var <- identifier
-    colon
-    domain <- parseTerm
-    rparen
-    comma
-    body <- parseTerm
-    let binding = makeBinding var domain body
-    pure binding
+  lambda
+  lparen
+  var <- identifier
+  colon
+  domain <- parseTerm
+  rparen
+  comma
+  body <- parseTerm
+  let binding = makeBinding var domain body
+  pure binding
 
 parseFactor :: Parser CoreTerm
 parseFactor = parseBinding <|> parseType <|> parseVar <|> parens parseTerm
@@ -42,9 +42,9 @@ parseTerm = foldr1 App <$> some parseFactor
 
 parseType :: Parser CoreTerm
 parseType = do
-    keyword "Type"
-    universe <- option 0 natural
-    pure (Type universe)
+  keyword "Type"
+  universe <- option 0 natural
+  pure (Type universe)
 
 parseVar :: Parser CoreTerm
 parseVar = makeVar <$> identifier
@@ -87,6 +87,6 @@ natural = lexeme Lexer.decimal
 
 identifier :: Parser Text
 identifier = do
-    ident <- lexeme (takeWhile1P (Just "letter") isLetter)
-    guard (not $ HashSet.member ident keywords)
-    pure ident
+  ident <- lexeme (takeWhile1P (Just "letter") isLetter)
+  guard (not $ HashSet.member ident keywords)
+  pure ident
