@@ -23,6 +23,8 @@ import           Control.Applicative
 import           Control.DeepSeq
 import           Control.Monad
 import           Data.Functor.Classes
+import           Data.Hashable
+import           Data.Hashable.Lifted
 import           Data.Text                      ( Text )
 import           Numeric.Natural
 import           Text.Read
@@ -90,6 +92,21 @@ instance Foldable Term where
 
 instance Functor Term where
   fmap f term = term >>= return . f
+
+instance Hashable a => Hashable (Term a) where
+  hashWithSalt = hashWithSalt1
+
+instance Hashable1 Term where
+  liftHashWithSalt hashA s term = case term of
+    Type universe   -> s `hashWithSalt` (0 :: Int) `hashWithSalt` universe
+    Var  identifier -> s `hashWithSalt` (1 :: Int) `hashA` identifier
+    App function argument ->
+      let hashTerm = liftHashWithSalt hashA
+      in  s `hashWithSalt` (2 :: Int) `hashTerm` function `hashTerm` argument
+    Binding codomain binding ->
+      let hashTerm  = liftHashWithSalt hashA
+          hashScope = liftHashWithSalt hashA
+      in  s `hashWithSalt` (3 :: Int) `hashTerm` codomain `hashScope` binding
 
 instance Monad Term where
   return = Var
