@@ -130,6 +130,26 @@ instance NFData1 Term where
     Binding codomain body ->
       liftRnf f codomain `seq` liftRnf (unvar rnf (liftRnf f)) (unscope body)
 
+instance Ord a => Ord (Term a) where
+  compare = compare1
+
+instance Ord1 Term where
+  liftCompare _ (Type aUniverse) (Type bUniverse) = compare aUniverse bUniverse
+
+  liftCompare cmp (Var aIdentifier) (Var bIdentifier) =
+    cmp aIdentifier bIdentifier
+
+  liftCompare cmp (App aFunction aArgument) (App bFunction bArgument) =
+    liftCompare cmp aFunction bFunction <> liftCompare cmp aArgument bArgument
+
+  liftCompare cmp (Binding aCodomain aBody) (Binding bCodomain bBody) =
+    liftCompare cmp aCodomain bCodomain <> liftCompare cmp aBody bBody
+
+  liftCompare _ Type{}    _ = LT
+  liftCompare _ Var{}     _ = LT
+  liftCompare _ App{}     _ = LT
+  liftCompare _ Binding{} _ = GT
+
 instance Read a => Read (Term a) where
   readPrec = readPrec1
 
