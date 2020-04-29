@@ -9,7 +9,6 @@ import           Test.Hspec
 import           Test.QuickCheck
 import           Test.QuickCheck.Poly
 import           Mallet.Core
-import           Mallet.Core.Term
 import           MalletTest.Core.Internal
 
 spec :: Spec
