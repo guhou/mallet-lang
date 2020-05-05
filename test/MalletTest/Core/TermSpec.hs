@@ -3,43 +3,63 @@ module MalletTest.Core.TermSpec
   )
 where
 
-import           Bound                         as Bound
+import           Bound
 import           Bound.Name
-import           Test.Hspec
-import           Test.QuickCheck
-import           Test.QuickCheck.Poly
+import           Data.Proxy
 import           Mallet.Core
 import           MalletTest.Core.Internal
+import           Test.Hspec
+import           Test.Hspec.QuickCheck
+import           Test.QuickCheck
+import           Test.QuickCheck.Classes
 
 spec :: Spec
 spec = do
-  describe "Applicative Term" $ do
-    it "identity" $ property $ \(TermA v) -> (pure id <*> v) === v
+  hspecLaws (applicativeLaws termProxy)
+  hspecLaws (eqLaws coreTermProxy)
+  hspecLaws (foldableLaws termProxy)
+  hspecLaws (functorLaws termProxy)
+  hspecLaws (monadLaws termProxy)
+  hspecLaws (ordLaws coreTermProxy)
+  hspecLaws (showLaws coreTermProxy)
+  hspecLaws (showReadLaws coreTermProxy)
+  hspecLaws (traversableLaws termProxy)
 
-    it "composition" $ property $ \(TermBC funU, TermAB funV, TermA w) ->
-      let u = fmap applyFun funU
-          v = fmap applyFun funV
-      in  (pure (.) <*> u <*> v <*> w) === (u <*> (v <*> w))
-
-    it "homomorphism" $ property $ \(FunAB funF, ArgA x) ->
-      let f = applyFun funF in (pure f <*> pure x) === (pure (f x) :: Term B)
-
-    it "interchange" $ property $ \(TermAB funU, ArgA y) ->
-      let u = fmap applyFun funU in (u <*> pure y) === (pure ($ y) <*> u)
+  describe "makeApp"
+    $ prop "constructs a term application"
+    $ \(MkCoreTerm f, MkCoreTerm x) ->
+        let expected = App f x
+            actual   = makeApp f x
+        in  actual === expected
 
   describe "makeBinding" $ do
-    it "does not bind non-matching variables in body"
-      $ property
+    prop "does not bind non-matching variables in body"
       $ \(MkIdentifier x, MkIdentifier y) ->
-          x /= y ==> makeBinding x (Type 0) (Var y) `shouldBe` Binding
-            (Type 0)
-            (Scope (Var (F (Var y))))
+          let expected = Binding (Type 0) (Scope (Var (F (Var y))))
+              actual   = makeBinding x (Type 0) (Var y)
+          in  (x /= y) ==> actual === expected
 
-    it "binds matching variables in body" $ property $ \(MkIdentifier x) ->
-      makeBinding x (Type 0) (Var x)
-        `shouldBe` Binding (Type 0) (Scope (Var (Bound.B (Name x ()))))
+    prop "binds matching variables in body" $ \(MkIdentifier x) ->
+      let expected = Binding (Type 0) (Scope (Var (B (Name x ()))))
+          actual   = makeBinding x (Type 0) (Var x)
+      in  actual === expected
+
+  describe "makeType"
+    $ prop "constructs a type term"
+    $ \(NonNegative universe) ->
+        let expected = Type universe
+            actual   = makeType universe
+        in  actual === expected
 
   describe "makeVar"
-    $ it "creates a var with a local name"
-    $ property
-    $ \(MkIdentifier x) -> makeVar x `shouldBe` Var x
+    $ prop "creates a var with a local name"
+    $ \(MkIdentifier x) ->
+        let expected = Var x
+            actual   = makeVar x
+        in  actual === expected
+
+termProxy :: Proxy MkTerm
+termProxy = Proxy
+
+coreTermProxy :: Proxy MkCoreTerm
+coreTermProxy = Proxy

@@ -1,4 +1,13 @@
-module MalletTest.Core.Internal where
+module MalletTest.Core.Internal
+    ( MkCoreTerm(..)
+    , MkIdentifier(..)
+    , MkTerm(..)
+    , arbitraryCoreTerm
+    , arbitraryIdentifier
+    , arbitraryTerm
+    , hspecLaws
+    )
+where
 
 import           Bound
 import           Bound.Name
@@ -7,44 +16,46 @@ import           Data.Bitraversable
 import           Data.Char
 import qualified Data.Text                     as Text
 import           Mallet.Core.Term
+import           Test.Hspec
 import           Test.QuickCheck         hiding ( function )
+import           Test.QuickCheck.Classes
 import           Test.QuickCheck.Instances.Natural
                                                 ( )
-import           Test.QuickCheck.Poly
+import           Test.QuickCheck.Instances.Text ( )
 
-newtype MkIdentifier = MkIdentifier Identifier deriving (Eq, Ord, Read, Show)
+newtype MkIdentifier = MkIdentifier { unIdentifier :: Identifier } deriving (Eq, Ord, Read, Show)
 
 instance Arbitrary MkIdentifier where
-    arbitrary = MkIdentifier <$> arbitraryIdentifier
+    arbitrary = fmap MkIdentifier arbitraryIdentifier
+    shrink    = fmap MkIdentifier . shrink . unIdentifier
 
-newtype TermA = TermA  (Term A) deriving (Show)
-instance Arbitrary TermA where
-    arbitrary = fmap TermA arbitraryTerm
+newtype MkTerm a = MkTerm { unMkTerm :: Term a } deriving (Eq, Ord, Read, Show)
 
-newtype TermB = TermB  (Term B) deriving (Show)
-instance Arbitrary TermB where
-    arbitrary = fmap TermB arbitraryTerm
+instance Arbitrary a => Arbitrary (MkTerm a) where
+    arbitrary = fmap MkTerm arbitraryTerm
+    shrink    = fmap MkTerm . shrinkTerm . unMkTerm
 
-newtype TermC = TermC  (Term C) deriving (Show)
-instance Arbitrary TermC where
-    arbitrary = fmap TermC arbitraryTerm
+instance Applicative MkTerm where
+    pure = MkTerm . pure
+    f <*> x = MkTerm (unMkTerm f <*> unMkTerm x)
 
-newtype TermBC = TermBC (Term (Fun B C)) deriving ( Show)
-instance Arbitrary TermBC where
-    arbitrary = fmap TermBC arbitraryTerm
+instance Foldable MkTerm where
+    foldMap f = foldMap f . unMkTerm
 
-newtype TermAB = TermAB  (Term (Fun A B)) deriving ( Show)
-instance Arbitrary TermAB where
-    arbitrary = fmap TermAB arbitraryTerm
+instance Functor MkTerm where
+    fmap f = MkTerm . fmap f . unMkTerm
 
+instance Monad MkTerm where
+    x >>= f = MkTerm (unMkTerm x >>= unMkTerm . f)
 
-newtype FunAB = FunAB  (Fun A B) deriving ( Show)
-instance Arbitrary FunAB where
-    arbitrary = fmap FunAB arbitrary
+instance Traversable MkTerm where
+    traverse f = fmap MkTerm . traverse f . unMkTerm
 
-newtype ArgA = ArgA A deriving ( Show)
-instance Arbitrary ArgA where
-    arbitrary = fmap ArgA arbitrary
+newtype MkCoreTerm = MkCoreTerm { unMkCoreTerm :: CoreTerm } deriving (Eq, Ord, Read, Show)
+
+instance Arbitrary MkCoreTerm where
+    arbitrary = fmap MkCoreTerm arbitraryCoreTerm
+    shrink    = fmap MkCoreTerm . shrinkTerm . unMkCoreTerm
 
 arbitraryCoreTerm :: Gen CoreTerm
 arbitraryCoreTerm = do
@@ -95,30 +106,25 @@ makeTermGen mkBinder mkAbstract =
             pure $ Binding codomain body
     in  termGen
 
-shrinkTerm :: Term a -> [Term a]
-shrinkTerm = shrinkTermWith (const [])
+shrinkTerm :: Arbitrary a => Term a -> [Term a]
+shrinkTerm = liftShrinkTerm shrink
 
-shrinkTermWith :: (a -> [a]) -> Term a -> [Term a]
-shrinkTermWith s term = case term of
+liftShrinkTerm :: (a -> [a]) -> Term a -> [Term a]
+liftShrinkTerm shrinkValue term = case term of
     Type universe -> [ Type universe' | universe' <- shrink universe ]
-    Var  a        -> [ Var a' | a' <- s a ]
+    Var  value    -> [ Var value' | value' <- shrinkValue value ]
     App function argument ->
         [function, argument]
-            ++ [ App function argument'
-               | argument' <- shrinkTermWith s argument
-               ]
-            ++ [ App function' argument
-               | function' <- shrinkTermWith s function
-               ]
+            ++ [ App function argument' | argument' <- shrinkTerm' argument ]
+            ++ [ App function' argument | function' <- shrinkTerm' function ]
     Binding codomain body ->
         [codomain]
-            ++ [ Binding codomain' body
-               | codomain' <- shrinkTermWith s codomain
-               ]
+            ++ [ Binding codomain' body | codomain' <- shrinkTerm' codomain ]
             ++ [ Binding codomain body' | body' <- shrinkScope body ]
   where
-    shrinkScope = fmap toScope . shrinkTermWith shrinkVar . fromScope
-    shrinkVar   = bitraverse pure s
+    shrinkTerm' = liftShrinkTerm shrinkValue
+    shrinkScope = fmap toScope . liftShrinkTerm shrinkVar . fromScope
+    shrinkVar   = bitraverse pure shrinkValue
 
 arbitraryIdentifier :: Gen Identifier
 arbitraryIdentifier = fmap Text.pack (listOf1 arbitraryLetter)
@@ -131,3 +137,8 @@ splitSize = do
     size  <- getSize
     split <- choose (0, size)
     pure (split, size - split)
+
+hspecLaws :: Laws -> Spec
+hspecLaws laws = describe
+    (lawsTypeclass laws)
+    (mapM_ (parallel . uncurry it) (lawsProperties laws))
