@@ -1,0 +1,8 @@
+cradle:
+  multi:
+    - path: "./src"
+      config: { cradle: { stack: { component: "mallet:lib" } } }
+    - path: "./test"
+      config: { cradle: { stack: { component: "mallet:test:mallet-test" } } }
+    - path: "./Setup.hs"
+      config: { cradle: { none: {} } }
