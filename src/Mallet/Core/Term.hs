@@ -22,6 +22,7 @@ import           Bound.Var
 import           Control.Applicative
 import           Control.DeepSeq
 import           Control.Monad
+import           Data.Foldable
 import           Data.Functor.Classes
 import           Data.Hashable
 import           Data.Hashable.Lifted
@@ -71,24 +72,38 @@ instance Eq a => Eq (Term a) where
   (==) = eq1
 
 instance Eq1 Term where
-  liftEq _  (Type universeA  ) (Type universeB  ) = universeA == universeB
+  liftEq eqValue aTerm bTerm = case aTerm of
+    Type aUniverse -> case bTerm of
+      Type bUniverse -> aUniverse == bUniverse
+      _              -> False
 
-  liftEq eq (Var  identifierA) (Var  identifierB) = eq identifierA identifierB
+    Var aValue -> case bTerm of
+      Var bValue -> eqValue aValue bValue
+      _          -> False
 
-  liftEq eq (App functionA argumentA) (App functionB argumentB) =
-    liftEq eq functionA functionB && liftEq eq argumentA argumentB
+    App aFunction aArgument -> case bTerm of
+      App bFunction bArgument ->
+        eqTerm aFunction bFunction && eqTerm aArgument bArgument
+      _ -> False
 
-  liftEq eq (Binding codomainA bodyA) (Binding codomainB bodyB) =
-    liftEq eq codomainA codomainB && liftEq eq bodyA bodyB
+    Binding aCodomain aBody -> case bTerm of
+      Binding bCodomain bBody ->
+        eqTerm aCodomain bCodomain && eqScope aBody bBody
+      _ -> False
 
-  liftEq _ _ _ = False
+   where
+    eqTerm  = liftEq eqValue
+    eqScope = liftEq eqValue
 
 instance Foldable Term where
   foldMap f term = case term of
     Type _                    -> mempty
-    Var  universe             -> f universe
-    App function argument -> mappend (foldMap f function) (foldMap f argument)
-    Binding codomain body     -> mappend (foldMap f codomain) (foldMap f body)
+    Var  value                -> f value
+    App     function argument -> foldTerm function `mappend` foldTerm argument
+    Binding codomain body     -> foldTerm codomain `mappend` foldScope body
+   where
+    foldTerm  = foldMap f
+    foldScope = foldMap f
 
 instance Functor Term where
   fmap f term = term >>= return . f
@@ -97,22 +112,26 @@ instance Hashable a => Hashable (Term a) where
   hashWithSalt = hashWithSalt1
 
 instance Hashable1 Term where
-  liftHashWithSalt hashA s term = case term of
-    Type universe   -> s `hashWithSalt` (0 :: Int) `hashWithSalt` universe
-    Var  identifier -> s `hashWithSalt` (1 :: Int) `hashA` identifier
+  liftHashWithSalt hashValue salt term = case term of
+    Type universe -> salt `hashWithSalt` (0 :: Int) `hashWithSalt` universe
+
+    Var  value    -> salt `hashWithSalt` (1 :: Int) `hashValue` value
+
     App function argument ->
-      let hashTerm = liftHashWithSalt hashA
-      in  s `hashWithSalt` (2 :: Int) `hashTerm` function `hashTerm` argument
+      salt `hashWithSalt` (2 :: Int) `hashTerm` function `hashTerm` argument
+
     Binding codomain binding ->
-      let hashTerm  = liftHashWithSalt hashA
-          hashScope = liftHashWithSalt hashA
-      in  s `hashWithSalt` (3 :: Int) `hashTerm` codomain `hashScope` binding
+      salt `hashWithSalt` (3 :: Int) `hashTerm` codomain `hashScope` binding
+
+   where
+    hashTerm  = liftHashWithSalt hashValue
+    hashScope = liftHashWithSalt hashValue
 
 instance Monad Term where
   return = Var
   term >>= f = case term of
     Type universe             -> Type universe
-    Var  identifier           -> f identifier
+    Var  value                -> f value
     App     function argument -> App (function >>= f) (argument >>= f)
     Binding codomain body     -> Binding (codomain >>= f) (body >>>= f)
 
@@ -120,81 +139,101 @@ instance NFData a => NFData (Term a) where
   rnf = rnf1
 
 instance NFData1 Term where
-  liftRnf f term = case term of
-    Type universe         -> rnf universe
+  liftRnf rnfValue term = case term of
+    Type universe             -> rnf universe
 
-    Var  identifier       -> f identifier
+    Var  value                -> rnfValue value
 
-    App function argument -> liftRnf f function `seq` liftRnf f argument
+    App     function argument -> rnfTerm function `seq` rnfTerm argument
 
-    Binding codomain body ->
-      liftRnf f codomain `seq` liftRnf (unvar rnf (liftRnf f)) (unscope body)
+    Binding codomain body     -> rnfTerm codomain `seq` rnfScope body
+
+   where
+    rnfTerm  = liftRnf rnfValue
+    rnfScope = liftRnf rnfVar . unscope
+    rnfVar   = unvar rnf rnfTerm
 
 instance Ord a => Ord (Term a) where
   compare = compare1
 
 instance Ord1 Term where
-  liftCompare _ (Type aUniverse) (Type bUniverse) = compare aUniverse bUniverse
+  liftCompare compareValue aTerm bTerm = case aTerm of
+    Type aUniverse -> case bTerm of
+      Type bUniverse -> compare aUniverse bUniverse
+      Var{}          -> LT
+      App{}          -> LT
+      Binding{}      -> LT
 
-  liftCompare cmp (Var aIdentifier) (Var bIdentifier) =
-    cmp aIdentifier bIdentifier
+    Var aValue -> case bTerm of
+      Type{}     -> GT
+      Var bValue -> compareValue aValue bValue
+      App{}      -> LT
+      Binding{}  -> LT
 
-  liftCompare cmp (App aFunction aArgument) (App bFunction bArgument) =
-    liftCompare cmp aFunction bFunction <> liftCompare cmp aArgument bArgument
+    App aFunction aArgument -> case bTerm of
+      Type{} -> GT
+      Var{}  -> GT
+      App bFunction bArgument ->
+        compareTerm aFunction bFunction <> compareTerm aArgument bArgument
+      Binding{} -> LT
 
-  liftCompare cmp (Binding aCodomain aBody) (Binding bCodomain bBody) =
-    liftCompare cmp aCodomain bCodomain <> liftCompare cmp aBody bBody
+    Binding aCodomain aBody -> case bTerm of
+      Type{} -> GT
+      Var{}  -> GT
+      App{}  -> GT
+      Binding bCodomain bBody ->
+        compareTerm aCodomain bCodomain <> compareScope aBody bBody
 
-  liftCompare _ Type{}    _ = LT
-  liftCompare _ Var{}     _ = LT
-  liftCompare _ App{}     _ = LT
-  liftCompare _ Binding{} _ = GT
+   where
+    compareTerm  = liftCompare compareValue
+    compareScope = liftCompare compareValue
 
 instance Read a => Read (Term a) where
   readPrec = readPrec1
 
 instance Read1 Term where
-  liftReadPrec rp rl =
-    readData
-      $   readUnaryWith readPrec "Type" Type
+  liftReadPrec readPrecValue readListPrecValue = readData $ asum
+    [ readUnaryWith readPrec      "Type" Type
+    , readUnaryWith readPrecValue "Var"  Var
+    , readBinaryWith readPrecTerm readPrecTerm  "App"     App
+    , readBinaryWith readPrecTerm readPrecScope "Binding" Binding
+    ]
 
-      <|> readUnaryWith rp       "Var"  Var
-
-      <|> readBinaryWith (liftReadPrec rp rl) (liftReadPrec rp rl) "App" App
-
-      <|> readBinaryWith (liftReadPrec rp rl)
-                         (liftReadPrec rp rl)
-                         "Binding"
-                         Binding
+   where
+    readPrecTerm  = liftReadPrec readPrecValue readListPrecValue
+    readPrecScope = liftReadPrec readPrecValue readListPrecValue
 
 instance Show a => Show (Term a) where
   showsPrec = showsPrec1
 
 instance Show1 Term where
-  liftShowsPrec sp sl p term = case term of
-    Type universe         -> showsUnaryWith showsPrec "Type" p universe
+  liftShowsPrec showsPrecValue showListValue p term = case term of
+    Type universe -> showsUnaryWith showsPrec "Type" p universe
 
-    Var  identifier       -> showsUnaryWith sp "Var" p identifier
+    Var  value    -> showsUnaryWith showsPrecValue "Var" p value
 
-    App function argument -> showsBinaryWith (liftShowsPrec sp sl)
-                                             (liftShowsPrec sp sl)
-                                             "App"
-                                             p
-                                             function
-                                             argument
+    App function argument ->
+      showsBinaryWith showsPrecTerm showsPrecTerm "App" p function argument
 
-    Binding codomain body -> showsBinaryWith (liftShowsPrec sp sl)
-                                             (liftShowsPrec sp sl)
-                                             "Binding"
-                                             p
-                                             codomain
-                                             body
+    Binding codomain body ->
+      showsBinaryWith showsPrecTerm showsPrecScope "Binding" p codomain body
+
+   where
+    showsPrecTerm  = liftShowsPrec showsPrecValue showListValue
+    showsPrecScope = liftShowsPrec showsPrecValue showListValue
 
 instance Traversable Term where
   traverse f term = case term of
-    Type universe   -> pure (Type universe)
-    Var  identifier -> fmap Var (f identifier)
+    Type universe -> pure (Type universe)
+
+    Var  value    -> fmap Var (f value)
+
     App function argument ->
-      liftA2 App (traverse f function) (traverse f argument)
+      liftA2 App (traverseTerm function) (traverseTerm argument)
+
     Binding codomain body ->
-      liftA2 Binding (traverse f codomain) (traverse f body)
+      liftA2 Binding (traverseTerm codomain) (traverseScope body)
+
+   where
+    traverseTerm  = traverse f
+    traverseScope = traverse f
