@@ -65,6 +65,7 @@ test-suite mallet-test
   hs-source-dirs: test
   main-is: Main.hs
   other-modules:
+    MalletTest
     MalletTest.Core.ParseSpec
     MalletTest.Core.TermSpec
     MalletTest.Core.Internal
