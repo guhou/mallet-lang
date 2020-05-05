@@ -68,7 +68,8 @@ test-suite mallet-test
     MalletTest
     MalletTest.Core.ParseSpec
     MalletTest.Core.TermSpec
-    MalletTest.Core.Internal
+    MalletTest.Core.QuickCheck
+    MalletTest.Hspec
   build-depends:
     , mallet ^>= 0.1
     , hspec ^>= 2.7

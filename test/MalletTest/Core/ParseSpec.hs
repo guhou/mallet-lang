@@ -8,6 +8,9 @@ import           Bound
 import           Bound.Name
 import           Data.Text                      ( Text )
 import qualified Data.Text                     as Text
+import           Mallet.Core.Parse
+import           Mallet.Core
+import           MalletTest.Core.QuickCheck
 import           Text.Megaparsec
 import           TextShow
 import           Test.Hspec
@@ -15,9 +18,6 @@ import           Test.Hspec.Megaparsec
 import           Test.QuickCheck
 import           Test.QuickCheck.Instances.Natural
                                                 ( )
-import           Mallet.Core.Parse
-import           Mallet.Core
-import           MalletTest.Core.Internal
 
 spec :: Spec
 spec = describe "parseTerm" $ do

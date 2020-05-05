@@ -7,7 +7,8 @@ import           Bound
 import           Bound.Name
 import           Data.Proxy
 import           Mallet.Core
-import           MalletTest.Core.Internal
+import           MalletTest.Core.QuickCheck
+import           MalletTest.Hspec
 import           Test.Hspec
 import           Test.Hspec.QuickCheck
 import           Test.QuickCheck

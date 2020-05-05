@@ -1,11 +1,10 @@
-module MalletTest.Core.Internal
+module MalletTest.Core.QuickCheck
     ( MkCoreTerm(..)
     , MkIdentifier(..)
     , MkTerm(..)
     , arbitraryCoreTerm
     , arbitraryIdentifier
     , arbitraryTerm
-    , hspecLaws
     )
 where
 
@@ -16,20 +15,22 @@ import           Data.Bitraversable
 import           Data.Char
 import qualified Data.Text                     as Text
 import           Mallet.Core.Term
-import           Test.Hspec
 import           Test.QuickCheck         hiding ( function )
-import           Test.QuickCheck.Classes
 import           Test.QuickCheck.Instances.Natural
                                                 ( )
 import           Test.QuickCheck.Instances.Text ( )
 
-newtype MkIdentifier = MkIdentifier { unIdentifier :: Identifier } deriving (Eq, Ord, Read, Show)
+newtype MkIdentifier = MkIdentifier
+    { unIdentifier :: Identifier
+    } deriving (Eq, Ord, Read, Show)
 
 instance Arbitrary MkIdentifier where
     arbitrary = fmap MkIdentifier arbitraryIdentifier
     shrink    = fmap MkIdentifier . shrink . unIdentifier
 
-newtype MkTerm a = MkTerm { unMkTerm :: Term a } deriving (Eq, Ord, Read, Show)
+newtype MkTerm a = MkTerm
+    { unMkTerm :: Term a
+    } deriving (Eq, Ord, Read, Show)
 
 instance Arbitrary a => Arbitrary (MkTerm a) where
     arbitrary = fmap MkTerm arbitraryTerm
@@ -51,7 +52,9 @@ instance Monad MkTerm where
 instance Traversable MkTerm where
     traverse f = fmap MkTerm . traverse f . unMkTerm
 
-newtype MkCoreTerm = MkCoreTerm { unMkCoreTerm :: CoreTerm } deriving (Eq, Ord, Read, Show)
+newtype MkCoreTerm = MkCoreTerm
+    { unMkCoreTerm :: CoreTerm
+    } deriving (Eq, Ord, Read, Show)
 
 instance Arbitrary MkCoreTerm where
     arbitrary = fmap MkCoreTerm arbitraryCoreTerm
@@ -60,67 +63,82 @@ instance Arbitrary MkCoreTerm where
 arbitraryCoreTerm :: Gen CoreTerm
 arbitraryCoreTerm = do
     identifiers <- listOf1 arbitraryIdentifier
-    let mkBinder = elements identifiers
-    let mkAbstract term = do
-            identifier <- mkBinder
-            pure $ abstract1Name identifier term
-    makeTermGen mkBinder mkAbstract
+    let valueGen = elements identifiers
+    let makeAbstractGen term = do
+            identifier <- valueGen
+            let boundTerm = abstract1Name identifier term
+            pure boundTerm
+    makeTermGen valueGen makeAbstractGen
 
-arbitraryTerm :: (Arbitrary a) => Gen (Term a)
+arbitraryTerm :: Arbitrary a => Gen (Term a)
 arbitraryTerm = do
     identifiers <- listOf1 arbitraryIdentifier
-    binders     <- listOf1 arbitrary
-    let mkIdentifier = elements identifiers
-    let mkBinder     = elements binders
-    let mkAbstract term = do
-            identifier <- mkIdentifier
-            capture    <- arbitrary :: Gen (Maybe ())
+    values      <- listOf1 arbitrary
+    let identifierGen = elements identifiers
+    let valueGen      = elements values
+    let makeAbstractGen term = do
+            identifier <- identifierGen
+            capture    <- arbitrary
             let boundTerm = abstract (const capture) term
-            pure $ mapBound (Name identifier) boundTerm
-    makeTermGen mkBinder mkAbstract
+            let namedTerm = mapBound (Name identifier) boundTerm
+            pure namedTerm
+    makeTermGen valueGen makeAbstractGen
 
 makeTermGen
     :: Gen a
     -> (Term a -> Gen (Scope (Name Identifier ()) Term a))
     -> Gen (Term a)
-makeTermGen mkBinder mkAbstract =
-    let termGen = do
-            size <- getSize
-            if size > 2
-                then oneof [typeGen, varGen, appGen, bindingGen]
-                else oneof [typeGen, varGen]
+makeTermGen valueGen makeAbstractGen = termGen
+  where
+    termGen = do
+        size <- getSize
+        if size > 2
+            then oneof [typeGen, varGen, appGen, bindingGen]
+            else oneof [typeGen, varGen]
 
-        typeGen = Type <$> arbitrarySizedNatural
+    typeGen = fmap Type arbitrarySizedNatural
 
-        varGen  = Var <$> mkBinder
+    varGen  = fmap Var valueGen
 
-        appGen  = do
-            (functionSize, argumentSize) <- splitSize
-            App <$> resize functionSize termGen <*> resize argumentSize termGen
+    appGen  = do
+        (functionSize, argumentSize) <- splitSize
+        function                     <- resize functionSize termGen
+        argument                     <- resize argumentSize termGen
+        pure (App function argument)
 
-        bindingGen = do
-            (codomainSize, bodySize) <- splitSize
-            codomain                 <- resize codomainSize termGen
-            bodyTerm                 <- resize bodySize termGen
-            body                     <- mkAbstract bodyTerm
-            pure $ Binding codomain body
-    in  termGen
+    bindingGen = do
+        (codomainSize, bodySize) <- splitSize
+        codomain                 <- resize codomainSize termGen
+        bodyTerm                 <- resize bodySize termGen
+        body                     <- makeAbstractGen bodyTerm
+        pure (Binding codomain body)
+
 
 shrinkTerm :: Arbitrary a => Term a -> [Term a]
 shrinkTerm = liftShrinkTerm shrink
 
 liftShrinkTerm :: (a -> [a]) -> Term a -> [Term a]
 liftShrinkTerm shrinkValue term = case term of
-    Type universe -> [ Type universe' | universe' <- shrink universe ]
-    Var  value    -> [ Var value' | value' <- shrinkValue value ]
+    Type universe -> fmap Type (shrink universe)
+
+    Var  value    -> fmap Var (shrinkValue value)
+
     App function argument ->
-        [function, argument]
-            ++ [ App function argument' | argument' <- shrinkTerm' argument ]
-            ++ [ App function' argument | function' <- shrinkTerm' function ]
+        let
+            subTerms        = [function, argument]
+            shrinkArguments = fmap (App function) (shrinkTerm' argument)
+            shrinkFunctions = fmap (flip App argument) (shrinkTerm' function)
+        in
+            concat [subTerms, shrinkFunctions, shrinkArguments]
+
     Binding codomain body ->
-        [codomain]
-            ++ [ Binding codomain' body | codomain' <- shrinkTerm' codomain ]
-            ++ [ Binding codomain body' | body' <- shrinkScope body ]
+        let
+            subTerms       = [codomain]
+            shrinkBodies   = fmap (Binding codomain) (shrinkScope body)
+            shrinkCodomain = fmap (flip Binding body) (shrinkTerm' codomain)
+        in
+            concat [subTerms, shrinkCodomain, shrinkBodies]
+
   where
     shrinkTerm' = liftShrinkTerm shrinkValue
     shrinkScope = fmap toScope . liftShrinkTerm shrinkVar . fromScope
@@ -137,8 +155,3 @@ splitSize = do
     size  <- getSize
     split <- choose (0, size)
     pure (split, size - split)
-
-hspecLaws :: Laws -> Spec
-hspecLaws laws = describe
-    (lawsTypeclass laws)
-    (mapM_ (parallel . uncurry it) (lawsProperties laws))
